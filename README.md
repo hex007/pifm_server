@@ -1,12 +1,26 @@
 **RiPlay -> RaspberryPi Radio Interface Player**
 
-Since Python has an easily modifiable server, this was a necessity
+A simple API handling server for PiFM to control Raspberry Pi fm transmission. Can be easily extended to serve web pages or to be controlled using buttons connected to GPIO pins for standalone function. 
 
-Tested with RPi Zero
+Since Python has an easily modifiable server, this was easy. 
+
+
+Tested with RPi 1 and Zero. For others just update the pifm binary with a working one and change command line for pifm in player.py
+
+    radio = subprocess.Popen(["./pifm_binary_name", parameters...], stdin=player.stdout)
+    
+To test pifm try:
+
+    avconv -i MUSIC_FILE s16le -ar 22.05k -ac 1 - | sudo ./pifm - FREQ
 
 **Install instruction (on RPi a.k.a. Server):**
 
-    git clone REPO_LINK
+    # Install avconv 
+    sudo apt-get update
+    sudo apt-get install libav-tools
+    
+    git clone https://github.com/hex007/pifm_server
+    cd pifm_server
     g++ -O3 -o pifm pifm.c
     mkdir Music
     # copy music to Music/
@@ -14,9 +28,12 @@ Tested with RPi Zero
     # start server
     sudo python main.py
 
+
 **API Documentation**
 
-1. Get Music Collection from Client : returns JSONobject
+Using a client to send requests to Server
+
+1. Get Music Collection : returns JSONobject
 
         curl http://raspberrypi.local:8080/api/collection
 
