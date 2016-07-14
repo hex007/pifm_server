@@ -10,16 +10,20 @@ import subprocess
 import threading
 from random import shuffle
 
+import api
+
 
 __author__ = 'saket'
 __tag__ = 'main'
 
+source = None
 player = None
-radio = None
 
+_player_lock = threading.Lock()
 _player_thread = None
 _stop_requested = False
 _collection = None
+_radio_out = True
 _playlist = []
 _volume = 5
 _freq = 100.1
@@ -34,24 +38,41 @@ def _start_player():
     Starts player and radio process. Waits for the processes to end.
     Returns if _stop_requested or playlist is empty
     """
-    global player, radio, _stop_requested
+    global source, player, _stop_requested
 
-    # avconv -i "$1" -f s16le -ar 22.05k -ac 1 - | sudo ./pifm - "$2"
+    _player_lock.acquire()
     while _playlist:
-        log.info("Playing : %s" % _playlist[0])
-        player = subprocess.Popen(
-                ["avconv", "-i", "Music/%s" % _playlist[0], "-f", "s16le", "-ar", "44100", "-ac", "2", "-loglevel",
-                 "panic", "-"],
-                stdout=subprocess.PIPE)
-        radio = subprocess.Popen(["./pifm", "-", "%.1f" % _freq, "44100", "stereo", str(_volume)], stdin=player.stdout)
-        player.stdout.close()
+        try:
+            log.info("Playing : %s" % _playlist[0])
+            # avconv -i "$File" -f s16le -ar 44100 -ac 2 -loglevel panic -
+            source = subprocess.Popen(
+                    ["avconv", "-i", "Music/%s" % _playlist[0], "-f", "s16le", "-ar", "44100", "-ac", "2", "-loglevel",
+                     "panic", "-"],
+                    stdout=subprocess.PIPE)
 
-        log.debug("radio.wait() :)")
-        radio.wait()
-        log.debug("Radio terminated :)")
-        log.debug("player.wait() :)")
-        player.wait()
-        log.debug("Player terminated :)")
+            if _radio_out:
+                # ./pifm - "$2" 44100 stereo "$Volume"
+                player = subprocess.Popen(["./pifm", "-", "%.1f" % _freq, "44100", "stereo", str(_volume)],
+                                          stdin=source.stdout)
+            else:
+                # aplay -c 2 -f cd -q
+                player = subprocess.Popen(["aplay", "-c", "2", "-f", "cd", "-q"],
+                                          stdin=source.stdout)
+
+            source.stdout.close()
+        except Exception as error:
+            log.error("Error: %s" % error.message)
+
+        api.inform_subscribers()
+
+        if player:
+            log.debug("player.wait() :)")
+            player.wait()
+            log.debug("Player terminated :)")
+        if source:
+            log.debug("source.wait() :)")
+            source.wait()
+            log.debug("Source terminated :)")
 
         if _stop_requested:
             _stop_requested = False
@@ -59,8 +80,11 @@ def _start_player():
 
         _playlist.pop(0)
 
+    source = None
     player = None
-    radio = None
+    api.inform_subscribers()
+
+    _player_lock.release()
     log.info("Thread terminated :)")
 
 
@@ -70,15 +94,13 @@ def _stop_player_process():
     Does not remove current playing song from playlist. User assumes responsibility of managing playlist.
     Acts like pressing STOP on any media player.
     """
-    if radio and radio.poll() is None:
-        radio.terminate()
-        log.debug("Terminating radio process :)")
-
     if player and player.poll() is None:
-        # For some reason terminate doesnt work and stop has to be called twice.
-        # Popen.kill() solves this problem
         player.terminate()
         log.debug("Terminating player process :)")
+
+    if source and source.poll() is None:
+        source.terminate()
+        log.debug("Terminating source process :)")
 
 
 def start_player(force=False):
@@ -118,6 +140,41 @@ def skip():
     _stop_player_process()
 
 
+def clear():
+    """Clear current playlist"""
+    global _playlist
+    if _player_thread and _player_thread.isAlive():
+        del _playlist[1:]
+    else:
+        _playlist = []
+
+
+def play(position):
+    """Play item at position in collection as new playlist"""
+    global _playlist
+    collection = get_collection()
+    if position == "all":
+        _playlist = [collection[k] for k in collection]
+    elif position == "shuffle":
+        _playlist = [collection[k] for k in collection]
+        shuffle(_playlist)
+    elif position in collection:
+        _playlist = [collection[position]]
+    else:
+        log.error("Play requested for %r" % position)
+
+    start_player(True)
+
+
+def queue(position):
+    """Add item at position in collection to playlist"""
+    global _playlist
+    collection = get_collection()
+    _playlist.append(collection[position])
+    log.info("Adding : %s" % collection[position])
+    start_player()
+
+
 def get_collection():
     """
     Read files available and return list of multimedia files available
@@ -155,46 +212,40 @@ def get_playlist():
     return _playlist
 
 
-def clear():
-    """Clear current playlist"""
-    global _playlist
-    if _player_thread and _player_thread.isAlive():
-        del _playlist[1:]
-    else:
-        _playlist = []
-
-
 def get_playlist_json():
     """Get current playlist as JSON object"""
     return json.dumps(get_playlist())
 
 
-def play(position):
-    """Play item at position in collection as new playlist"""
-    global _playlist
-    collection = get_collection()
-    if position == "all":
-        _playlist = [collection[k] for k in collection]
-    elif position == "shuffle":
-        _playlist = [collection[k] for k in collection]
-        shuffle(_playlist)
-    elif position in collection:
-        _playlist = [collection[position]]
-    else:
-        log.error("Play requested for %r" % position)
+def get_status():
+    if source and source.poll() is None:
+        keys = _collection.keys()
+        return {'playing':       True,
+                'name': _playlist[0],
+                'index': keys    [_collection.values().index(_playlist[0])],
+                'queued':        len(_playlist) - 1
+                }
 
-    start_player(True)
+    return {'playing': False,
+            'queued':  len(_playlist)
+            }
 
 
-def queue(position):
-    """Add item at position in collection to playlist"""
-    global _playlist
-    collection = get_collection()
-    _playlist.append(collection[position])
-    log.info("Adding : %s" % collection[position])
-    start_player()
+def get_status_json():
+    return json.dumps(get_status())
 
 
 def get_freq():
     """Return current broadcast frequency"""
     return _freq
+
+
+def get_mode():
+    return _radio_out
+
+
+def set_mode(radio_out):
+    global _radio_out
+    stop_player()
+    _radio_out = radio_out
+    start_player()

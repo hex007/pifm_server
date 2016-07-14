@@ -1,35 +1,56 @@
-**RiPlay -> RaspberryPi Radio Interface Player**
+# RaspberryPi Radio Player Interface
 
 A simple API handling server for PiFM to control Raspberry Pi fm transmission. Can be easily extended to serve web pages or to be controlled using buttons connected to GPIO pins for standalone function. 
 
 Since Python has an easily modifiable server, this was easy. 
 
 
-Tested with RPi 1 and Zero. For others just update the pifm binary with a working one and change command line for pifm in player.py
+Tested with **RaspberryPi v1 model B and Zero**. For others just update the pifm binary with a working one and change command line for pifm in player.py
 
-    radio = subprocess.Popen(["./pifm_binary_name", parameters...], stdin=player.stdout)
+    player = subprocess.Popen(["./pifm_binary_name", parameters...], stdin=player.stdout)
     
 To test pifm try:
 
     avconv -i MUSIC_FILE s16le -ar 22.05k -ac 1 - | sudo ./pifm - FREQ
 
-**Install instruction (on RPi a.k.a. Server):**
+#### Changes in latest version (13 July 2016):
+- Support for subscription to player status updates
+- Working Android controller application ([RiPlay for Android](https://github.com/hex007/pifm_client_android))
+- Switch between radio and audio playback (restarts song)
+
+
+#### Features todo:
+- Volume control
+    - ALSA volume control (should be simple)
+    - Multithreaded pifm to change volume on the fly
+
+#### Install instruction (on RPi a.k.a. Server):
 
     # Install avconv 
     sudo apt-get update
     sudo apt-get install libav-tools
-    
+
+    # Get Server code
     git clone https://github.com/hex007/pifm_server
     cd pifm_server
     g++ -O3 -o pifm pifm.c
     mkdir Music
-    # copy music to Music/
+    # copy music files to Music/
 
-    # start server
+    # Start server
     sudo python main.py
 
+#### Optional: Start server at startup
 
-**API Documentation**
+    # To start server at startup:
+    sudo nano /etc/rc.local
+
+    # In nano INSERT BEFORE return 0
+    cd /home/pi
+    sudo python main.py > latest.log &
+
+
+#### API Documentation
 
 Using a client to send requests to Server
 
@@ -71,3 +92,28 @@ Using a client to send requests to Server
 9. Clear playlist; keeps current song if playing
 
         curl http://raspberrypi.local:8080/api/clear
+
+#### Subscription management
+
+Changes in the player state can be subscribed using:
+
+     curl http://raspberrypi.local:8080/api/subscribe?port=$PORT
+
+Once a user is subscribed to the player, every state change is reported to the subscriber at the
+ port requested `$PORT`. The client machine must have a server running to accept status updates.
+ If the status update request from the RPi to client fails then the client is automatically
+ unsubscribed from the stats updates.
+
+To manually request for unsubscription send request:
+
+    curl http://raspberrypi.local:8080/api/unsubscribe
+
+
+#### Switch outputs
+
+Audio output (defaults to radio) can be changed using the following requests:
+
+    curl http://raspberrypi.local:8080/api/output/audio
+    curl http://raspberrypi.local:8080/api/output/radio
+
+Multiple attempts at switching causes RPi to output noise and a reboot is needed.

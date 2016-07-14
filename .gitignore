@@ -1,6 +1,6 @@
-Music/*
-
-.bkp
+.bkp/
 pifm
 
 .idea
+Music/
+*.pyc

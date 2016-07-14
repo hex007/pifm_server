@@ -83,6 +83,8 @@ def main():
 
     except KeyboardInterrupt:
         player.stop_player()
+        api.inform_subscribers()
+
 
     finally:
         server.socket.close()
