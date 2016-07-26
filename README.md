@@ -2,7 +2,7 @@
 
 A simple API handling server for PiFM to control Raspberry Pi fm transmission. Can be easily extended to serve web pages or to be controlled using buttons connected to GPIO pins for standalone function. 
 
-Since Python has an easily modifiable server, this was easy. 
+Since Python has an easily modifiable server, this was easy and helpful.
 
 
 Tested with **RaspberryPi v1 model B and Zero**. For others just update the pifm binary with a working one and change command line for pifm in player.py
@@ -12,6 +12,7 @@ Tested with **RaspberryPi v1 model B and Zero**. For others just update the pifm
 To test pifm try:
 
     avconv -i MUSIC_FILE s16le -ar 22.05k -ac 1 - | sudo ./pifm - FREQ
+
 
 #### Changes in latest version (13 July 2016):
 - Support for subscription to player status updates
@@ -23,6 +24,7 @@ To test pifm try:
 - Volume control
     - ALSA volume control (should be simple)
     - Multithreaded pifm to change volume on the fly
+
 
 #### Install instruction (on RPi a.k.a. Server):
 
@@ -39,6 +41,7 @@ To test pifm try:
 
     # Start server
     sudo python main.py
+
 
 #### Optional: Start server at startup
 
@@ -93,16 +96,17 @@ Using a client to send requests to Server
 
         curl http://raspberrypi.local:8080/api/clear
 
+
 #### Subscription management
 
-Changes in the player state can be subscribed using:
+Changes in the player state can be subscribed to using:
 
      curl http://raspberrypi.local:8080/api/subscribe?port=$PORT
 
 Once a user is subscribed to the player, every state change is reported to the subscriber at the
- port requested `$PORT`. The client machine must have a server running to accept status updates.
- If the status update request from the RPi to client fails then the client is automatically
- unsubscribed from the stats updates.
+ port requested `$PORT`. The IP address is the same as the one requesting the subscription .The
+ client machine must have a server running to accept status updates. If the status update request
+ from the RPi to client fails then the client is automatically unsubscribed from the stats updates.
 
 To manually request for unsubscription send request:
 
@@ -113,7 +117,10 @@ To manually request for unsubscription send request:
 
 Audio output (defaults to radio) can be changed using the following requests:
 
+    # To set output as Audio (3.5mm Jack or HDMI)
     curl http://raspberrypi.local:8080/api/output/audio
+
+    # To set output as Radio (PiFM)
     curl http://raspberrypi.local:8080/api/output/radio
 
-Multiple attempts at switching causes RPi to output noise and a reboot is needed.
+Multiple attempts at switching causes RPi to output noise and a reboot is needed to resolve the issue.

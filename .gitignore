@@ -4,3 +4,5 @@ pifm
 .idea
 Music/
 *.pyc
+
+.gitignore

@@ -78,13 +78,11 @@ def main():
     server = MyThreadedServer(("", PORT_NUMBER), MyServer)
     try:
         print "Started http server on port ", PORT_NUMBER
-        # print MarketMilitia
         server.serve_forever()
 
     except KeyboardInterrupt:
         player.stop_player()
         api.inform_subscribers()
-
 
     finally:
         server.socket.close()

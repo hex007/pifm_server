@@ -86,6 +86,10 @@ def api_stop(request):
 
 def api_skip(request):
     """Handle API request to Skip song"""
+    if not player.get_playlist():
+        api_error(request, "Playlist empty")
+        return
+
     request.send_response(202, 'API', "Skipping Song")
     request.end_headers()
 
