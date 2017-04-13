@@ -5,12 +5,14 @@
 # `--(~/player.py$)-->
 
 import json
-import logging
+import os
 import subprocess
 import threading
 from random import shuffle
 
 import api
+import ws
+from main import log
 
 
 __author__ = 'saket'
@@ -27,9 +29,6 @@ _radio_out = False
 _playlist = []
 _volume = 5
 _freq = 100.1
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 
 def _start_player():
@@ -64,6 +63,7 @@ def _start_player():
             log.error("Error: %s" % error.message)
 
         api.inform_subscribers()
+        ws.inform_subscribers()
 
         if player:
             log.debug("player.wait() :)")
@@ -83,6 +83,7 @@ def _start_player():
     source = None
     player = None
     api.inform_subscribers()
+    ws.inform_subscribers()
 
     _player_lock.release()
     log.info("Thread terminated :)")
@@ -124,7 +125,6 @@ def start_player(force=False):
             return
 
     _player_thread = threading.Thread(target=_start_player)
-    _player_thread.daemon = True
     _player_thread.start()
 
 
@@ -185,21 +185,13 @@ def get_collection():
     if _collection:
         return _collection
 
-    process = subprocess.Popen(["ls", "Music/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = process.communicate()
-
-    if out:
-        # List of Music Files (Assuming only Multimedia files available)
-        files = out[:-1].split('\n')
-
-        # todo: Output as JSON?
-        _collection = {i + 1: x for i, x in enumerate(files)}
+    try:
+        _collection = {i + 1: x for i, x in enumerate(os.listdir("Music"))}
         return _collection
 
-    elif err:
-        log.error(err)
-
-    return {}
+    except OSError as err:
+        log.error(err.message)
+        return {}
 
 
 def get_collection_json():
@@ -220,14 +212,14 @@ def get_playlist_json():
 def get_status():
     if source and source.poll() is None:
         keys = _collection.keys()
-        return {'playing':       True,
+        return {'playing': True,
                 'name': _playlist[0],
-                'index': keys    [_collection.values().index(_playlist[0])],
-                'queued':        len(_playlist) - 1
+                'index': keys[_collection.values().index(_playlist[0])],
+                'queued': len(_playlist) - 1
                 }
 
     return {'playing': False,
-            'queued':  len(_playlist)
+            'queued': len(_playlist)
             }
 
 

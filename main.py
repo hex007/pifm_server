@@ -5,20 +5,29 @@
 # `--(~/main.py$)-->
 import logging
 import re
+import threading
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from SocketServer import ThreadingMixIn
 
+from SimpleWebSocketServer import SimpleWebSocketServer, WebSocket
+
 import api
 import player
+import web
+import ws
 
 
 __author__ = 'saket'
 __tag__ = 'main'
 _debug = True
-PORT_NUMBER = 8080
+HTTP_PORT_NUMBER = 8080
+WEB_SOCKET_PORT_NUMBER = 8081
 
 logging.basicConfig(format='[%(asctime)s]--(%(levelname)s)--> %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S')
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 # ██████╗ ██╗██████╗ ██╗      █████╗ ██╗   ██╗ ███████╗███████╗██████╗ ██╗   ██╗███████╗██████╗
@@ -27,9 +36,6 @@ logging.basicConfig(format='[%(asctime)s]--(%(levelname)s)--> %(message)s',
 # ██╔══██╗██║██╔═══╝ ██║     ██╔══██║  ╚██╔╝   ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██╔══╝  ██╔══██╗
 # ██║  ██║██║██║     ███████╗██║  ██║   ██║    ███████║███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║
 # ╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝   ╚═╝    ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
-
-class MyThreadedServer(ThreadingMixIn, HTTPServer):
-    pass
 
 
 class MyServer(BaseHTTPRequestHandler):
@@ -40,16 +46,13 @@ class MyServer(BaseHTTPRequestHandler):
         if re.match("/api/.+?", self.path):
             api.handler(self)
 
-        elif re.match("/.+?", self.path):
-            # todo : Implement web page server
-            self.send_error(501, "Web services not implemented yet")
-
         else:
-            self.send_error(404, "Not found what you were looking for")
+            web.handler(self)
 
 
     def cookie_handler(self):
         """Get Cookies for authentication"""
+        # todo : implement a new authentication method using cookies
         cookies = self.headers.getheader("Cookie")
         if cookies and re.match("username=.+?; auth_token=[0-9a-f]{32}", cookies):
             return re.findall("username=(.+?); auth_token=([0-9a-f]{32})", cookies)[0]
@@ -73,11 +76,46 @@ class MyServer(BaseHTTPRequestHandler):
         self.wfile.write("%s %d %s\r\n" % (self.protocol_version, code, message))
 
 
+class WebSocketHandler(WebSocket):
+    def handleMessage(self):
+        ws.handler(self, self.data)
+
+
+    def handleConnected(self):
+        ws.ws_subscribe(self)
+
+
+    def handleClose(self):
+        ws.ws_unsubscribe(self)
+
+
+    def sendMessage(self, data):
+        super(WebSocketHandler, self).sendMessage(unicode(data))
+
+
 # #######################################################################################
+class HttpServer(ThreadingMixIn, HTTPServer):
+    pass
+
+
+class WebSocketServer(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.server = SimpleWebSocketServer("", WEB_SOCKET_PORT_NUMBER, WebSocketHandler)
+
+
+    def run(self):
+        log.info("Starting WebSocketServer on port %d" % WEB_SOCKET_PORT_NUMBER)
+        self.server.serveforever()
+
+
 def main():
-    server = MyThreadedServer(("", PORT_NUMBER), MyServer)
+    server = HttpServer(("", HTTP_PORT_NUMBER), MyServer)
+    web_socket_server = WebSocketServer()
+
     try:
-        print "Started http server on port ", PORT_NUMBER
+        web_socket_server.start()
+        log.info("Started HttpServer on port %d" % HTTP_PORT_NUMBER)
         server.serve_forever()
 
     except KeyboardInterrupt:
@@ -86,6 +124,7 @@ def main():
 
     finally:
         server.socket.close()
+        web_socket_server.server.close()
 
 
 if __name__ == "__main__":
